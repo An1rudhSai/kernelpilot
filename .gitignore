@@ -6,3 +6,5 @@ __pycache__/
 .venv/
 runs/*.jsonl.tmp
 .DS_Store
+agent_kernels/
+runs/

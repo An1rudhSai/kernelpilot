@@ -22,7 +22,7 @@ else
   CMAKE_ARGS += -DCMAKE_PREFIX_PATH="$(TORCH_CMAKE)"
 endif
 
-.PHONY: build test test-gpu test-cpu bench roofline evaluate lint format clean
+.PHONY: build test test-gpu test-cpu typecheck bench roofline evaluate lint format clean
 
 build:
 	cmake -S . -B $(BUILD_DIR) -DKP_BACKEND=$(BACKEND) -DCMAKE_BUILD_TYPE=Release $(CMAKE_ARGS)
@@ -37,6 +37,11 @@ test-gpu: build
 
 test-cpu:
 	$(PYTHON) -m pytest tests/cpu -q
+
+# Type-check every kernel for NVIDIA and AMD without a GPU toolkit (needs a clang
+# with NVPTX/AMDGPU targets; set CLANG=... to override).
+typecheck:
+	./tools/syntax_check/check.sh
 
 bench: build
 	$(PYTHON) -m kernelpilot.cli bench --out results

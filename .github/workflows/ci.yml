@@ -60,3 +60,12 @@ jobs:
           export NVCC_FLAGS="-I$NV/cuda_runtime/include"
           nvcc --version
           ./scripts/compile_check.sh
+
+  kernel-typecheck:
+    # Parses and type-checks every kernel as CUDA (sm_75) and as HIP (gfx90a)
+    # with clang and stub runtime headers. Independent of the nvcc job above.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update -q && sudo apt-get install -y -q clang
+      - run: CLANG=clang++ ./tools/syntax_check/check.sh
