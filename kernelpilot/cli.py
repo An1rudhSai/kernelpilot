@@ -3,6 +3,7 @@
     kernelpilot info
     kernelpilot check   --kernel softmax [--impl hip:best]
     kernelpilot bench   [--kernel softmax ...] [--out results]
+    kernelpilot roofline --results results/bench.json --out results/roofline.png
 """
 
 from __future__ import annotations
@@ -65,8 +66,20 @@ def cmd_bench(args: argparse.Namespace) -> int:
         results += bench_kernel(spec, impls, gpu=gpu, iters=args.iters)
     print(to_markdown(results, gpu))
     if args.out:
+        from .roofline import plot_roofline
+
         save_results(results, gpu, args.out)
-        print(f"wrote {args.out}/bench.json and bench.md", file=sys.stderr)
+        plot_roofline(results, gpu, f"{args.out}/roofline.png")
+        print(f"wrote {args.out}/bench.json, bench.md and roofline.png", file=sys.stderr)
+    return 0
+
+
+def cmd_roofline(args: argparse.Namespace) -> int:
+    from .benchmark import load_results
+    from .roofline import plot_roofline
+
+    gpu, results = load_results(args.results)
+    print(plot_roofline(results, gpu, args.out))
     return 0
 
 
@@ -89,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--iters", type=int, default=100)
     s.add_argument("--out", default="results")
     s.set_defaults(func=cmd_bench)
+
+    s = sub.add_parser("roofline", help="plot a roofline from saved benchmark results")
+    s.add_argument("--results", default="results/bench.json")
+    s.add_argument("--out", default="results/roofline.png")
+    s.set_defaults(func=cmd_roofline)
     return p
 
 

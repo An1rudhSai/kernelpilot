@@ -167,7 +167,48 @@ SOFTMAX = KernelSpec(
 )
 
 
-SPECS: dict[str, KernelSpec] = {s.name: s for s in [VECTOR_ADD, REDUCE_SUM, SOFTMAX]}
+# --------------------------------------------------------------------------- matmul
+
+def matmul_reference(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    return a.double() @ b.double()
+
+
+def _matmul_inputs(shape, dtype, device, seed):
+    M, N, K = shape
+    g = _gen(device, seed)
+    return _randn((M, K), dtype, device, g), _randn((K, N), dtype, device, g)
+
+
+def _matmul_tol(shape, dtype):
+    # Outputs are sums of K products of N(0,1) values, so magnitudes grow like
+    # sqrt(K) and fp32 accumulation error grows roughly like K * eps. A real bug
+    # (wrong index, missing tile) gives errors of order sqrt(K), far above these.
+    K = shape[2]
+    if dtype == torch.float32:
+        return Tolerance(atol=2e-6 * K + 1e-5, rtol=1e-4)
+    return Tolerance(atol=1e-3 * math.sqrt(K) + 1e-3, rtol=1e-2)
+
+
+MATMUL = KernelSpec(
+    name="matmul",
+    description="C = A @ B for row-major A (M, K) and B (K, N). Output has the input dtype; "
+                "accumulate in float32. TF32 is not allowed for float32 inputs.",
+    signature="def kernel_fn(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor  # (M, N)",
+    make_inputs=_matmul_inputs,
+    reference=matmul_reference,
+    baseline=torch.matmul,
+    test_shapes=[(1, 1, 1), (7, 13, 5), (64, 64, 64), (127, 129, 65), (256, 512, 128),
+                 (33, 1000, 77), (512, 256, 1024), (1024, 1024, 1024)],
+    bench_shapes=[(1024, 1024, 1024), (2048, 2048, 2048), (4096, 4096, 4096)],
+    dtypes=[torch.float32, torch.float16],
+    flops=lambda s: 2.0 * s[0] * s[1] * s[2],
+    bytes_moved=lambda s, dt: float((s[0] * s[2] + s[2] * s[1] + s[0] * s[1]) * _esize(dt)),
+    tolerance=_matmul_tol,
+    shape_names=("M", "N", "K"),
+)
+
+
+SPECS: dict[str, KernelSpec] = {s.name: s for s in [VECTOR_ADD, REDUCE_SUM, SOFTMAX, MATMUL]}
 
 
 def get_spec(name: str) -> KernelSpec:

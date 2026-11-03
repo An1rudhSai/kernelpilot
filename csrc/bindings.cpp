@@ -63,16 +63,34 @@ at::Tensor softmax(const at::Tensor& x, int64_t variant) {
   return y;
 }
 
+at::Tensor matmul(const at::Tensor& a, const at::Tensor& b, int64_t variant) {
+  check_input(a, "a");
+  check_input(b, "b");
+  TORCH_CHECK(a.dim() == 2 && b.dim() == 2 && a.size(1) == b.size(0),
+              "matmul expects (M, K) @ (K, N), got ", a.sizes(), " and ", b.sizes());
+  TORCH_CHECK(a.scalar_type() == b.scalar_type(), "a and b must have the same dtype");
+  const int64_t M = a.size(0), K = a.size(1), N = b.size(1);
+  TORCH_CHECK(M < (int64_t{1} << 31) && N < (int64_t{1} << 31) && K < (int64_t{1} << 31),
+              "matmul shape too large");
+  auto c = at::empty({M, N}, a.options());
+  if (K == 0) return c.zero_();
+  kp::matmul(check_variant(variant, 4), dtype_of(a), a.data_ptr(), b.data_ptr(), c.data_ptr(), M,
+             N, K, current_stream(a));
+  return c;
+}
+
 }  // namespace
 
 TORCH_LIBRARY(kp, m) {
   m.def("vector_add(Tensor a, Tensor b, int variant) -> Tensor");
   m.def("reduce_sum(Tensor x, int variant) -> Tensor");
   m.def("softmax(Tensor x, int variant) -> Tensor");
+  m.def("matmul(Tensor a, Tensor b, int variant) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(kp, CUDA, m) {
   m.impl("vector_add", &vector_add);
   m.impl("reduce_sum", &reduce_sum);
   m.impl("softmax", &softmax);
+  m.impl("matmul", &matmul);
 }

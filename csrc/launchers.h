@@ -18,4 +18,8 @@ void reduce_sum(int variant, DType dt, const void* x, float* out, int64_t n, voi
 // Row-wise softmax of a contiguous (M, N) matrix.
 void softmax(int variant, DType dt, const void* x, void* y, int64_t M, int64_t N, void* stream);
 
+// C = A @ B, row-major. variant 0..3: naive, smem tiled, register tiled, vectorized.
+void matmul(int variant, DType dt, const void* A, const void* B, void* C, int64_t M, int64_t N,
+            int64_t K, void* stream);
+
 }  // namespace kp

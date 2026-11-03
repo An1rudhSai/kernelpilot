@@ -19,6 +19,7 @@ HIP_STAGES: dict[str, list[str]] = {
     "vector_add": ["naive", "gridstride", "vectorized"],
     "reduce_sum": ["naive", "seq_addressing", "vec_warp_shuffle"],
     "softmax": ["naive", "block_per_row", "online_fused"],
+    "matmul": ["naive", "smem_tiled", "reg_tiled", "vectorized"],
 }
 
 # Extra trailing arguments some ops take besides the spec inputs.
