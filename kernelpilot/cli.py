@@ -4,6 +4,8 @@
     kernelpilot check   --kernel softmax [--impl hip:best]
     kernelpilot bench   [--kernel softmax ...] [--out results]
     kernelpilot roofline --results results/bench.json --out results/roofline.png
+    kernelpilot optimize --kernel softmax --iterations 10 [--lang triton|hip]
+    kernelpilot evaluate --results results/bench.json --runs runs
 """
 
 from __future__ import annotations
@@ -83,6 +85,34 @@ def cmd_roofline(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_optimize(args: argparse.Namespace) -> int:
+    from .agent.llm import OpenAICompatLLM
+    from .agent.loop import Agent, save_best
+
+    llm = OpenAICompatLLM.from_env(model=args.model, base_url=args.base_url,
+                                   temperature=args.temperature)
+    agent = Agent(llm, args.kernel, lang=args.lang, dtype=args.dtype, log_path=args.log,
+                  timeout_s=args.timeout)
+    run = agent.optimize(args.iterations)
+    path = save_best(run, args.save_dir)
+    if path:
+        print(f"saved best kernel to {path}")
+    return 0 if run.best else 1
+
+
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .evaluation import report
+
+    text = report(args.results, args.runs)
+    print(text)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="kernelpilot")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -107,6 +137,25 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--results", default="results/bench.json")
     s.add_argument("--out", default="results/roofline.png")
     s.set_defaults(func=cmd_roofline)
+
+    s = sub.add_parser("optimize", help="run the LLM agent on one kernel")
+    s.add_argument("--kernel", required=True)
+    s.add_argument("--iterations", type=int, default=10)
+    s.add_argument("--lang", choices=["triton", "hip"], default="triton")
+    s.add_argument("--dtype", choices=["float32", "float16"], default="float32")
+    s.add_argument("--model", help="model name (default: $KP_MODEL)")
+    s.add_argument("--base-url", help="OpenAI-compatible base URL (default: $KP_BASE_URL)")
+    s.add_argument("--temperature", type=float, default=0.7)
+    s.add_argument("--timeout", type=float, default=300.0, help="seconds per candidate")
+    s.add_argument("--log", help="JSONL log path (default: runs/<kernel>_..._<id>.jsonl)")
+    s.add_argument("--save-dir", default="agent_kernels")
+    s.set_defaults(func=cmd_optimize)
+
+    s = sub.add_parser("evaluate", help="compare PyTorch vs hand-written vs agent")
+    s.add_argument("--results", default="results/bench.json")
+    s.add_argument("--runs", default="runs")
+    s.add_argument("--out", default="results/evaluation.md")
+    s.set_defaults(func=cmd_evaluate)
     return p
 
 
