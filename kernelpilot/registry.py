@@ -12,7 +12,7 @@ import os
 from collections.abc import Callable
 
 from . import ext
-from .specs import get_spec
+from .specs import LAYERNORM_EPS, get_spec
 
 # HIP stages per kernel, in order; the index is the `variant` passed to the op.
 HIP_STAGES: dict[str, list[str]] = {
@@ -20,10 +20,12 @@ HIP_STAGES: dict[str, list[str]] = {
     "reduce_sum": ["naive", "seq_addressing", "vec_warp_shuffle"],
     "softmax": ["naive", "block_per_row", "online_fused"],
     "matmul": ["naive", "smem_tiled", "reg_tiled", "vectorized"],
+    "layernorm": ["naive", "block_two_pass", "welford_fused"],
+    "attention": ["naive", "flash_tiled"],
 }
 
 # Extra trailing arguments some ops take besides the spec inputs.
-_HIP_EXTRA_ARGS: dict[str, tuple] = {}
+_HIP_EXTRA_ARGS: dict[str, tuple] = {"layernorm": (LAYERNORM_EPS,)}
 
 
 def triton_available() -> bool:

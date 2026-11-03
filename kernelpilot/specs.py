@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
 
 Shape = tuple[int, ...]
 Inputs = tuple[torch.Tensor, ...]
@@ -208,7 +209,84 @@ MATMUL = KernelSpec(
 )
 
 
-SPECS: dict[str, KernelSpec] = {s.name: s for s in [VECTOR_ADD, REDUCE_SUM, SOFTMAX, MATMUL]}
+# --------------------------------------------------------------------------- layernorm
+
+LAYERNORM_EPS = 1e-5
+
+
+def layernorm_reference(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor
+                        ) -> torch.Tensor:
+    # eps = 1e-5, biased variance, normalized over the last dimension.
+    return F.layer_norm(x.double(), (x.shape[-1],), weight.double(), bias.double(), 1e-5)
+
+
+def _layernorm_inputs(shape, dtype, device, seed):
+    M, N = shape
+    g = _gen(device, seed)
+    x = _randn((M, N), dtype, device, g, scale=2.0)
+    w = (1.0 + 0.1 * torch.randn(N, generator=g, device=device)).to(dtype)
+    b = (0.1 * torch.randn(N, generator=g, device=device)).to(dtype)
+    return x, w, b
+
+
+LAYERNORM = KernelSpec(
+    name="layernorm",
+    description="LayerNorm over the last dimension of a contiguous (M, N) tensor with "
+                "elementwise affine weight and bias of shape (N,), eps=1e-5, biased variance. "
+                "Output has the input dtype; compute statistics in float32.",
+    signature="def kernel_fn(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor)"
+              " -> torch.Tensor",
+    make_inputs=_layernorm_inputs,
+    reference=layernorm_reference,
+    baseline=lambda x, w, b: F.layer_norm(x, (x.shape[-1],), w, b, LAYERNORM_EPS),
+    test_shapes=[(1, 1), (1, 7), (3, 1000), (64, 1024), (17, 4097), (32, 12288), (2, 20000)],
+    bench_shapes=[(4096, 1024), (4096, 4096), (8192, 8192)],
+    dtypes=[torch.float32, torch.float16],
+    flops=lambda s: 8.0 * s[0] * s[1],
+    bytes_moved=lambda s, dt: float((2 * s[0] * s[1] + 2 * s[1]) * _esize(dt)),
+    tolerance=lambda s, dt: Tolerance(1e-5, 1e-4) if dt == torch.float32
+    else Tolerance(5e-3, 1e-2),
+    shape_names=("M", "N"),
+)
+
+
+# --------------------------------------------------------------------------- attention
+
+def attention_reference(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    q, k, v = q.double(), k.double(), v.double()
+    scores = q @ k.transpose(-1, -2) / math.sqrt(q.shape[-1])
+    return torch.softmax(scores, dim=-1) @ v
+
+
+def _attention_inputs(shape, dtype, device, seed):
+    g = _gen(device, seed)
+    return tuple(_randn(shape, dtype, device, g) for _ in range(3))
+
+
+ATTENTION = KernelSpec(
+    name="attention",
+    description="Non-causal scaled dot-product attention softmax(Q K^T / sqrt(D)) V for "
+                "contiguous (B, H, S, D) tensors with small S. Output has the input dtype.",
+    signature="def kernel_fn(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor)"
+              " -> torch.Tensor  # (B, H, S, D)",
+    make_inputs=_attention_inputs,
+    reference=attention_reference,
+    baseline=F.scaled_dot_product_attention,
+    test_shapes=[(1, 1, 1, 16), (1, 2, 7, 32), (2, 4, 64, 64), (1, 2, 100, 64),
+                 (2, 2, 128, 128), (1, 3, 50, 48)],
+    bench_shapes=[(8, 16, 128, 64), (8, 16, 256, 64), (4, 16, 512, 64)],
+    dtypes=[torch.float32, torch.float16],
+    flops=lambda s: 4.0 * s[0] * s[1] * s[2] * s[2] * s[3],
+    bytes_moved=lambda s, dt: 4.0 * s[0] * s[1] * s[2] * s[3] * _esize(dt),
+    tolerance=lambda s, dt: Tolerance(1e-5, 1e-4) if dt == torch.float32
+    else Tolerance(2e-3, 1e-2),
+    shape_names=("B", "H", "S", "D"),
+)
+
+
+SPECS: dict[str, KernelSpec] = {
+    s.name: s for s in [VECTOR_ADD, REDUCE_SUM, SOFTMAX, MATMUL, LAYERNORM, ATTENTION]
+}
 
 
 def get_spec(name: str) -> KernelSpec:

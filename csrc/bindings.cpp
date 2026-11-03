@@ -79,6 +79,40 @@ at::Tensor matmul(const at::Tensor& a, const at::Tensor& b, int64_t variant) {
   return c;
 }
 
+at::Tensor layernorm(const at::Tensor& x, const at::Tensor& w, const at::Tensor& b, double eps,
+                     int64_t variant) {
+  check_input(x, "x");
+  check_input(w, "weight");
+  check_input(b, "bias");
+  const int64_t N = x.size(-1);
+  TORCH_CHECK(w.numel() == N && b.numel() == N, "weight and bias must have size ", N);
+  TORCH_CHECK(w.scalar_type() == x.scalar_type() && b.scalar_type() == x.scalar_type(),
+              "x, weight and bias must share a dtype");
+  auto y = at::empty_like(x);
+  const int64_t M = N == 0 ? 0 : x.numel() / N;
+  TORCH_CHECK(M < (int64_t{1} << 31), "layernorm shape too large");
+  kp::layernorm(check_variant(variant), dtype_of(x), x.data_ptr(), w.data_ptr(), b.data_ptr(),
+                y.data_ptr(), M, N, static_cast<float>(eps), current_stream(x));
+  return y;
+}
+
+at::Tensor attention(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                     int64_t variant) {
+  check_input(q, "q");
+  check_input(k, "k");
+  check_input(v, "v");
+  TORCH_CHECK(q.dim() == 4 && q.sizes() == k.sizes() && q.sizes() == v.sizes(),
+              "q, k, v must all be (B, H, S, D)");
+  TORCH_CHECK(q.scalar_type() == k.scalar_type() && q.scalar_type() == v.scalar_type(),
+              "q, k, v must share a dtype");
+  const int64_t BH = q.size(0) * q.size(1), S = q.size(2), D = q.size(3);
+  TORCH_CHECK(D <= 256 && BH < 65536, "attention supports D <= 256 and B*H < 65536");
+  auto o = at::empty_like(q);
+  kp::attention(check_variant(variant, 2), dtype_of(q), q.data_ptr(), k.data_ptr(), v.data_ptr(),
+                o.data_ptr(), BH, S, D, current_stream(q));
+  return o;
+}
+
 }  // namespace
 
 TORCH_LIBRARY(kp, m) {
@@ -86,6 +120,8 @@ TORCH_LIBRARY(kp, m) {
   m.def("reduce_sum(Tensor x, int variant) -> Tensor");
   m.def("softmax(Tensor x, int variant) -> Tensor");
   m.def("matmul(Tensor a, Tensor b, int variant) -> Tensor");
+  m.def("layernorm(Tensor x, Tensor weight, Tensor bias, float eps, int variant) -> Tensor");
+  m.def("attention(Tensor q, Tensor k, Tensor v, int variant) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(kp, CUDA, m) {
@@ -93,4 +129,6 @@ TORCH_LIBRARY_IMPL(kp, CUDA, m) {
   m.impl("reduce_sum", &reduce_sum);
   m.impl("softmax", &softmax);
   m.impl("matmul", &matmul);
+  m.impl("layernorm", &layernorm);
+  m.impl("attention", &attention);
 }

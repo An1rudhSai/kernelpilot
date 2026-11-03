@@ -57,6 +57,8 @@ __device__ float sqrtf(float);
 __device__ float rsqrtf(float);
 __device__ float fabsf(float);
 __device__ float __fdividef(float, float);
+__device__ int min(int, int);
+__device__ int max(int, int);
 
 typedef struct __kp_stream* __kp_stream_t;
 

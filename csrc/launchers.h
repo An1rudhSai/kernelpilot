@@ -22,4 +22,12 @@ void softmax(int variant, DType dt, const void* x, void* y, int64_t M, int64_t N
 void matmul(int variant, DType dt, const void* A, const void* B, void* C, int64_t M, int64_t N,
             int64_t K, void* stream);
 
+// LayerNorm over the last dim of a contiguous (M, N) matrix with weight/bias of size N.
+void layernorm(int variant, DType dt, const void* x, const void* w, const void* b, void* y,
+               int64_t M, int64_t N, float eps, void* stream);
+
+// Non-causal attention on contiguous (BH, S, D) q/k/v. variant 0..1: naive, flash-tiled.
+void attention(int variant, DType dt, const void* q, const void* k, const void* v, void* o,
+               int64_t BH, int64_t S, int64_t D, void* stream);
+
 }  // namespace kp
