@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+
+  cpu-tests:
+    # Harness logic and the whole agent loop (with a scripted fake LLM and a
+    # fake evaluator), no GPU needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/cpu -q
+
+  triton-interpreter:
+    # Runs the hand-written Triton kernels on CPU through Triton's interpreter
+    # (TRITON_INTERPRET=1) against the same correctness harness, on small shapes.
+    runs-on: ubuntu-latest
+    env:
+      TRITON_INTERPRET: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install triton -e ".[dev]"
+      - run: pytest tests/cpu/test_triton_interp.py -q
+
+  hip-kernels-compile:
+    # Compiles every HIP kernel with nvcc through the compat header (no GPU, no
+    # PyTorch), so kernel syntax/type errors are caught on each push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install "nvidia-cuda-nvcc-cu12>=12.4" "nvidia-cuda-runtime-cu12>=12.4"
+      - name: compile kernels
+        run: |
+          NV=$(python -c "import nvidia, os; print(os.path.dirname(nvidia.__path__[0] + '/x'))")
+          export PATH="$NV/cuda_nvcc/bin:$PATH"
+          export NVCC_FLAGS="-I$NV/cuda_runtime/include"
+          nvcc --version
+          ./scripts/compile_check.sh
