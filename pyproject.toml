@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kernelpilot"
+version = "0.1.0"
+description = "Hand-written HIP/Triton GPU kernels plus an LLM agent that writes, verifies and optimizes new ones."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.4",
+    "numpy",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+triton = ["triton>=3.0"]
+
+[project.scripts]
+kernelpilot = "kernelpilot.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["kernelpilot*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# Triton kernels use single-letter math names and constexpr-style args.
+ignore = ["E741", "B008"]
+
+[tool.pytest.ini_options]
+markers = [
+    "gpu: needs a CUDA or ROCm GPU",
+    "triton_interp: runs Triton kernels under TRITON_INTERPRET=1 on CPU",
+]

@@ -1,0 +1,8 @@
+build/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+runs/*.jsonl.tmp
+.DS_Store
