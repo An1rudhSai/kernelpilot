@@ -9,6 +9,7 @@ precision), which shapes and dtypes it must handle, how much work it does
 from __future__ import annotations
 
 import inspect
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -99,7 +100,74 @@ VECTOR_ADD = KernelSpec(
 )
 
 
-SPECS: dict[str, KernelSpec] = {s.name: s for s in [VECTOR_ADD]}
+# --------------------------------------------------------------------------- reduction
+
+def reduce_sum_reference(x: torch.Tensor) -> torch.Tensor:
+    return x.double().sum()
+
+
+def _reduce_sum_inputs(shape, dtype, device, seed):
+    return (_randn(shape, dtype, device, _gen(device, seed)),)
+
+
+def _reduce_sum_tol(shape, dtype):
+    # fp32 accumulation of n O(1) values: rounding error grows ~ sqrt(n) * eps.
+    n = shape[0]
+    return Tolerance(atol=1e-5 * math.sqrt(n) + 1e-5, rtol=1e-5)
+
+
+REDUCE_SUM = KernelSpec(
+    name="reduce_sum",
+    description="Sum of all elements of a 1-D tensor, returned as a float32 scalar "
+                "(0-dim tensor), accumulating in float32 regardless of input dtype.",
+    signature="def kernel_fn(x: torch.Tensor) -> torch.Tensor  # 0-dim float32",
+    make_inputs=_reduce_sum_inputs,
+    reference=reduce_sum_reference,
+    baseline=lambda x: x.sum(dtype=torch.float32),
+    test_shapes=[(1,), (7,), (1000,), (1024,), (65537,), (1 << 20,), (3_000_001,)],
+    bench_shapes=[(1 << 24,), (1 << 26,)],
+    dtypes=[torch.float32, torch.float16],
+    flops=lambda s: float(s[0]),
+    bytes_moved=lambda s, dt: float(s[0] * _esize(dt) + 4),
+    tolerance=_reduce_sum_tol,
+    shape_names=("n",),
+    output_dtype=lambda dt: torch.float32,
+)
+
+
+# --------------------------------------------------------------------------- softmax
+
+def softmax_reference(x: torch.Tensor) -> torch.Tensor:
+    return torch.softmax(x.double(), dim=-1)
+
+
+def _softmax_inputs(shape, dtype, device, seed):
+    # Scale 30 makes exp() overflow (fp32 overflows past ~88) unless the kernel
+    # subtracts the row max first, so unstable implementations fail loudly.
+    return (_randn(shape, dtype, device, _gen(device, seed), scale=30.0),)
+
+
+SOFTMAX = KernelSpec(
+    name="softmax",
+    description="Numerically stable softmax over the last dimension of a contiguous "
+                "(M, N) tensor. Output has the input dtype.",
+    signature="def kernel_fn(x: torch.Tensor) -> torch.Tensor  # same shape/dtype as x",
+    make_inputs=_softmax_inputs,
+    reference=softmax_reference,
+    baseline=lambda x: torch.softmax(x, dim=-1),
+    test_shapes=[(1, 1), (1, 7), (3, 1000), (17, 1024), (128, 4097), (64, 12288),
+                 (4, 32768), (1000, 129)],
+    bench_shapes=[(4096, 1024), (4096, 4096), (1024, 32768)],
+    dtypes=[torch.float32, torch.float16],
+    flops=lambda s: 5.0 * s[0] * s[1],
+    bytes_moved=lambda s, dt: 2.0 * s[0] * s[1] * _esize(dt),
+    tolerance=lambda s, dt: Tolerance(1e-6, 1e-5) if dt == torch.float32
+    else Tolerance(1e-3, 1e-2),
+    shape_names=("M", "N"),
+)
+
+
+SPECS: dict[str, KernelSpec] = {s.name: s for s in [VECTOR_ADD, REDUCE_SUM, SOFTMAX]}
 
 
 def get_spec(name: str) -> KernelSpec:

@@ -6,7 +6,6 @@ import math
 import os
 
 import pytest
-import torch
 
 pytestmark = pytest.mark.triton_interp
 

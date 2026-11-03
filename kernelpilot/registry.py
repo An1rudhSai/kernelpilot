@@ -17,6 +17,8 @@ from .specs import get_spec
 # HIP stages per kernel, in order; the index is the `variant` passed to the op.
 HIP_STAGES: dict[str, list[str]] = {
     "vector_add": ["naive", "gridstride", "vectorized"],
+    "reduce_sum": ["naive", "seq_addressing", "vec_warp_shuffle"],
+    "softmax": ["naive", "block_per_row", "online_fused"],
 }
 
 # Extra trailing arguments some ops take besides the spec inputs.

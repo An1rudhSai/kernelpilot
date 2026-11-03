@@ -27,8 +27,8 @@ void check_input(const at::Tensor& t, const char* name) {
   TORCH_CHECK(t.is_contiguous(), name, " must be contiguous");
 }
 
-int check_variant(int64_t v) {
-  TORCH_CHECK(v >= 0 && v <= 2, "variant must be 0 (naive), 1 (optimized) or 2 (best)");
+int check_variant(int64_t v, int64_t num_variants = 3) {
+  TORCH_CHECK(v >= 0 && v < num_variants, "variant must be in [0, ", num_variants, ")");
   return static_cast<int>(v);
 }
 
@@ -43,12 +43,36 @@ at::Tensor vector_add(const at::Tensor& a, const at::Tensor& b, int64_t variant)
   return c;
 }
 
+at::Tensor reduce_sum(const at::Tensor& x, int64_t variant) {
+  check_input(x, "x");
+  auto out = at::zeros({}, x.options().dtype(at::kFloat));
+  kp::reduce_sum(check_variant(variant), dtype_of(x), x.data_ptr(), out.data_ptr<float>(),
+                 x.numel(), current_stream(x));
+  return out;
+}
+
+at::Tensor softmax(const at::Tensor& x, int64_t variant) {
+  check_input(x, "x");
+  TORCH_CHECK(x.dim() >= 1, "softmax needs at least 1 dimension");
+  auto y = at::empty_like(x);
+  const int64_t N = x.size(-1);
+  const int64_t M = N == 0 ? 0 : x.numel() / N;
+  TORCH_CHECK(M < (int64_t{1} << 31) && N < (int64_t{1} << 31), "softmax shape too large");
+  kp::softmax(check_variant(variant), dtype_of(x), x.data_ptr(), y.data_ptr(), M, N,
+              current_stream(x));
+  return y;
+}
+
 }  // namespace
 
 TORCH_LIBRARY(kp, m) {
   m.def("vector_add(Tensor a, Tensor b, int variant) -> Tensor");
+  m.def("reduce_sum(Tensor x, int variant) -> Tensor");
+  m.def("softmax(Tensor x, int variant) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(kp, CUDA, m) {
   m.impl("vector_add", &vector_add);
+  m.impl("reduce_sum", &reduce_sum);
+  m.impl("softmax", &softmax);
 }

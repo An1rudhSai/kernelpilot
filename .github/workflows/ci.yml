@@ -8,8 +8,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install ruff
@@ -20,8 +20,8 @@ jobs:
     # fake evaluator), no GPU needed.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -35,8 +35,8 @@ jobs:
     env:
       TRITON_INTERPRET: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -48,8 +48,8 @@ jobs:
     # PyTorch), so kernel syntax/type errors are caught on each push.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install "nvidia-cuda-nvcc-cu12>=12.4" "nvidia-cuda-runtime-cu12>=12.4"

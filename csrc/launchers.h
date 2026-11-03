@@ -12,4 +12,10 @@ enum class DType : int { F32 = 0, F16 = 1 };
 void vector_add(int variant, DType dt, const void* a, const void* b, void* c, int64_t n,
                 void* stream);
 
+// out must be a zero-initialised float32 scalar; accumulation is fp32.
+void reduce_sum(int variant, DType dt, const void* x, float* out, int64_t n, void* stream);
+
+// Row-wise softmax of a contiguous (M, N) matrix.
+void softmax(int variant, DType dt, const void* x, void* y, int64_t M, int64_t N, void* stream);
+
 }  // namespace kp
